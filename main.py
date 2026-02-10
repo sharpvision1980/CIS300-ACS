@@ -1,94 +1,103 @@
 import streamlit as st
 import requests
 import os
-import time  # <--- This was missing / 之前缺少这一行
+import time
 
 # --- Configuration / 配置 ---
-REPO_PATH = "sharpvision1980/CSI300"
+REPO_OWNER = "sharpvision1980"
+REPO_NAME = "RepoC3"
+REPO_PATH = f"{REPO_OWNER}/{REPO_NAME}"
 API_URL = f"https://api.github.com/repos/{REPO_PATH}"
 
-st.set_page_config(page_title="GitHub Visibility Toggler", page_icon="🔒")
+st.set_page_config(page_title="Repo Visibility Guard", page_icon="🔐")
 
-# --- Robust Token Loading / 鲁棒的令牌加载 ---
-# This checks secrets.toml first, then environment variables
-# 优先检查 secrets.toml，然后检查环境变量
-try:
-    TOKEN = st.secrets["GITHUB_TOKEN"]
-except Exception:
-    TOKEN = os.getenv("GITHUB_TOKEN")
+# --- Authentication Logic / 身份验证逻辑 ---
+def check_password():
+    """Returns True if the user had the correct password."""
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == st.secrets["ACCESS_PASSWORD"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store password
+        else:
+            st.session_state["password_correct"] = False
 
-# --- Functions / 功能函数 ---
+    if "password_correct" not in st.session_state:
+        # First run, show input for password.
+        st.text_input(
+            "Enter Password to Proceed", type="password", on_change=password_entered, key="password"
+        )
+        return False
+    elif not st.session_state["password_correct"]:
+        # Password incorrect, show input + error.
+        st.text_input(
+            "Enter Password to Proceed", type="password", on_change=password_entered, key="password"
+        )
+        st.error("😕 Password incorrect")
+        return False
+    else:
+        # Password correct.
+        return True
 
-def get_repo_status():
-    """Fetches current visibility status from GitHub API."""
-    headers = {
-        "Authorization": f"Bearer {TOKEN}",
-        "Accept": "application/vnd.github+json"
-    }
+# --- GitHub Logic / GitHub 逻辑 ---
+def get_repo_status(token):
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
     try:
         response = requests.get(API_URL, headers=headers)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            st.error(f"GitHub API Error: {response.status_code} - {response.text}")
-            return None
-    except Exception as e:
-        st.error(f"Connection Error: {e}")
+        return response.json() if response.status_code == 200 else None
+    except:
         return None
 
-def update_visibility(new_visibility):
-    """Updates the repository visibility (public or private)."""
-    headers = {
-        "Authorization": f"Bearer {TOKEN}",
-        "Accept": "application/vnd.github+json"
-    }
-    # GitHub API uses 'visibility': 'private' or 'public'
+def update_visibility(token, new_visibility):
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
     data = {"visibility": new_visibility}
-    response = requests.patch(API_URL, headers=headers, json=data)
-    return response
+    return requests.patch(API_URL, headers=headers, json=data)
 
-# --- UI Layout / 界面布局 ---
-st.title("🛡️ GitHub Repo Visibility Control")
-st.write(f"**Target Repository:** `{REPO_PATH}`")
+# --- Main App Execution / 主程序执行 ---
 
-if not TOKEN:
-    st.error("❌ **GITHUB_TOKEN not found!**")
-    st.info("Please create `.streamlit/secrets.toml` in your project folder with the following content:")
-    st.code('GITHUB_TOKEN = "your_token_here"', language="toml")
-    st.stop() 
-
-# 1. Fetch current status
-repo_data = get_repo_status()
-
-if repo_data:
-    # GitHub returns 'private': True/False
-    is_private = repo_data.get("private")
-    current_visibility = "private" if is_private else "public"
+if check_password():
+    # --- Authorized Area / 已授权区域 ---
+    st.title("🛡️ Repo Visibility Control")
     
-    # 2. Display Status Metrics
-    col1, col2 = st.columns(2)
-    status_color = "🔴" if is_private else "🟢"
-    col1.metric("Current Status", f"{status_color} {current_visibility.upper()}")
-    
-    # 3. Toggle Logic
-    target_visibility = "public" if is_private else "private"
-    btn_label = f"Switch to {target_visibility.upper()}"
-    
-    st.divider()
-    st.write(f"Click the button below to change visibility to **{target_visibility}**.")
-    
-    # Use a unique key for the button to prevent state issues
-    if st.button(btn_label, type="primary", use_container_width=True):
-        with st.spinner(f"Setting repository to {target_visibility}..."):
-            res = update_visibility(target_visibility)
-            
-            if res.status_code == 200:
-                st.success(f"✅ Success! Repository is now **{target_visibility}**.")
-                time.sleep(1.5) # Wait a moment so user can see the success message
-                st.rerun() # Refresh the UI to show new status
-            else:
-                st.error(f"Update Failed: {res.status_code}")
-                st.json(res.json()) # Show detailed error from GitHub
+    # Load GitHub Token
+    try:
+        TOKEN = st.secrets["GITHUB_TOKEN"]
+    except Exception:
+        TOKEN = os.getenv("GITHUB_TOKEN")
 
-# Footer info
-st.sidebar.info(f"Connected as: {repo_data.get('owner', {}).get('login') if repo_data else 'Unknown'}")
+    if not TOKEN:
+        st.error("Missing GITHUB_TOKEN in secrets.")
+        st.stop()
+
+    repo_data = get_repo_status(TOKEN)
+
+    if repo_data:
+        is_private = repo_data.get("private")
+        current_vis = "private" if is_private else "public"
+        
+        st.info(f"Connected to: **{REPO_PATH}**")
+        
+        col1, col2 = st.columns(2)
+        status_emoji = "🔴" if is_private else "🟢"
+        col1.metric("Current Status", f"{status_emoji} {current_vis.upper()}")
+        
+        target_vis = "public" if is_private else "private"
+        
+        st.divider()
+        if target_vis == "public":
+            st.warning("⚠️ Warning: Making this repo PUBLIC will expose the code.")
+
+        if st.button(f"Switch to {target_vis.upper()}", type="primary", use_container_width=True):
+            with st.spinner("Updating GitHub..."):
+                res = update_visibility(TOKEN, target_vis)
+                if res.status_code == 200:
+                    st.success(f"Changed to {target_vis}!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(f"Failed: {res.status_code}")
+    
+    # Logout button
+    if st.sidebar.button("Logout"):
+        st.session_state["password_correct"] = False
+        st.rerun()
