@@ -5,7 +5,7 @@ import time
 
 # --- Configuration / 配置 ---
 REPO_OWNER = "sharpvision1980"
-REPO_NAME = "RepoC3"
+REPO_NAME = "CIS300-ACS"  # Updated / 已更新
 REPO_PATH = f"{REPO_OWNER}/{REPO_NAME}"
 API_URL = f"https://api.github.com/repos/{REPO_PATH}"
 
@@ -23,20 +23,17 @@ def check_password():
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # First run, show input for password.
         st.text_input(
             "Enter Password to Proceed", type="password", on_change=password_entered, key="password"
         )
         return False
     elif not st.session_state["password_correct"]:
-        # Password incorrect, show input + error.
         st.text_input(
             "Enter Password to Proceed", type="password", on_change=password_entered, key="password"
         )
         st.error("😕 Password incorrect")
         return False
     else:
-        # Password correct.
         return True
 
 # --- GitHub Logic / GitHub 逻辑 ---
@@ -44,7 +41,12 @@ def get_repo_status(token):
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
     try:
         response = requests.get(API_URL, headers=headers)
-        return response.json() if response.status_code == 200 else None
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 404:
+            st.error(f"Repository `{REPO_PATH}` not found. Check the name or token permissions.")
+            return None
+        return None
     except:
         return None
 
@@ -58,6 +60,7 @@ def update_visibility(token, new_visibility):
 if check_password():
     # --- Authorized Area / 已授权区域 ---
     st.title("🛡️ Repo Visibility Control")
+    st.subheader(f"Target: `{REPO_NAME}`")
     
     # Load GitHub Token
     try:
@@ -75,29 +78,31 @@ if check_password():
         is_private = repo_data.get("private")
         current_vis = "private" if is_private else "public"
         
-        st.info(f"Connected to: **{REPO_PATH}**")
+        st.markdown(f"[🔗 View `{REPO_NAME}` on GitHub](https://github.com/{REPO_PATH})")
         
         col1, col2 = st.columns(2)
         status_emoji = "🔴" if is_private else "🟢"
         col1.metric("Current Status", f"{status_emoji} {current_vis.upper()}")
+        col2.metric("Owner", REPO_OWNER)
         
         target_vis = "public" if is_private else "private"
         
         st.divider()
         if target_vis == "public":
-            st.warning("⚠️ Warning: Making this repo PUBLIC will expose the code.")
+            st.warning("⚠️ **Warning**: Making this repo PUBLIC will expose the code to everyone.")
 
-        if st.button(f"Switch to {target_vis.upper()}", type="primary", use_container_width=True):
-            with st.spinner("Updating GitHub..."):
+        if st.button(f"🚀 Switch to {target_vis.upper()}", type="primary", use_container_width=True):
+            with st.spinner(f"Updating GitHub to {target_vis}..."):
                 res = update_visibility(TOKEN, target_vis)
                 if res.status_code == 200:
-                    st.success(f"Changed to {target_vis}!")
-                    time.sleep(1)
+                    st.success(f"✅ Success! `{REPO_NAME}` is now **{target_vis}**.")
+                    time.sleep(1.5)
                     st.rerun()
                 else:
-                    st.error(f"Failed: {res.status_code}")
+                    st.error(f"Update Failed: {res.status_code}")
+                    st.json(res.json())
     
-    # Logout button
-    if st.sidebar.button("Logout"):
+    # Logout button in sidebar
+    if st.sidebar.button("Logout / 退出登录"):
         st.session_state["password_correct"] = False
         st.rerun()
