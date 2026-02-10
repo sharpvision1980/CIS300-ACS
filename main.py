@@ -5,7 +5,7 @@ import time
 
 # --- Configuration / 配置 ---
 REPO_OWNER = "sharpvision1980"
-REPO_NAME = "CIS300"  # Updated / 已更新
+REPO_NAME = "CSI300"  # Updated / 已更新
 REPO_PATH = f"{REPO_OWNER}/{REPO_NAME}"
 API_URL = f"https://api.github.com/repos/{REPO_PATH}"
 
